@@ -1,0 +1,4 @@
+interface:
+  display_name: "XING Datadog to Dash0 Migration"
+  short_description: "Assess XING Dash0 migrations safely"
+  default_prompt: "Use $xing-datadog-to-dash0-migration to assess this service migration from Datadog to Dash0 and list the remaining validation steps."

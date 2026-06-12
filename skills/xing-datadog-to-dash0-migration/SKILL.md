@@ -11,6 +11,7 @@ Use this skill when a user asks to migrate, assess, review, or validate a XING/N
 
 - Read the local repo first. Prefer existing Odyssey/Enclave patterns and recently migrated sibling services over inventing new config.
 - Treat Dash0 docs and Odyssey chart behavior as the source of truth. Use internal docs links provided by the user or already known in the repo; browse when the docs may have changed.
+- Use the `dash0-api` skill for Dash0 authentication, dataset selection, and API queries. Prefer repeatable API calls over `dash0-cli`.
 - Keep Datadog-only functionality until there is a Dash0 replacement and the team agrees to remove it.
 - Do not remove Datadog Browser RUM unless Dash0 web SDK tokens and endpoint wiring are ready and preview is validated.
 - Do not assume Prometheus is used. Prove it from repo config, docs, metrics endpoints, or team input.
@@ -79,25 +80,25 @@ podAnnotations:
    - Migrate to `@dash0/sdk-web` only when the team provides preview and production web ingest tokens, endpoint URL, env var names, and service naming.
    - Tokens embedded in browser JS must be ingest-only, dataset-scoped, environment-specific, and preferably restricted to web events.
 
-## Validation Checklist
+## Post-Deploy Dash0 Validation
 
-Use preview first.
+Run this phase after the infrastructure and test/preview deployment are applied. It applies when Dash0 is the migration backend or the requested validation target.
 
 - Argo application is `Healthy` and cleanly `Synced`.
 - `Dash0Monitoring/dash0-monitoring` exists and is synced in the namespace.
-- Dash0 service details show the service under the expected name.
-- Traces appear for web/API requests with expected resource attributes:
+- Use dataset `odyssey-preview` for preview/test unless the user provides another dataset.
+- Trigger real HTTP/API traffic, then query Dash0 for service traces.
+- Query Dash0 for logs for the service and at least one worker if workers exist.
+- Validate traces/logs include expected attributes where present:
   - `service.name`
-  - `service.namespace`
   - `service.version`
   - `deployment.environment.name`
   - `deployment.id`
-- Logs appear for the service and at least one worker.
-- RED metrics or equivalent service metrics appear in Dash0.
-- AMQP, Kafka, Sidekiq, or other workers are validated with a real message/job where possible.
-- Controlled or naturally occurring errors appear as error traces/logs.
-- Prometheus/Yabeda app metrics are validated only if the service uses Prometheus.
-- SRE-generated Dash0 checks are visible for supported SLOs.
+- Validate controlled or naturally occurring errors as error traces/logs when safe.
+- Validate RED metrics or equivalent service metrics when available.
+- Validate Prometheus/Yabeda app metrics only if the repo proves Prometheus is used.
+- Validate AMQP, Kafka, Sidekiq, or other workers only after triggering real messages/jobs.
+- Check Dash0 alert/check rules when SRE-generated checks are expected.
 - Browser RUM events are validated only if the web SDK migration is in scope.
 
 ## Common Findings
@@ -113,15 +114,20 @@ Use preview first.
 Call the backend/platform migration complete only when:
 
 - preview Argo is clean,
-- Dash0 receives traces, logs, and service metrics for the primary service,
+- Dash0 receives traces, logs, and available service metrics for the primary service in the selected dataset,
 - relevant long-running workers are validated or explicitly deferred,
 - Prometheus is either validated or declared not applicable,
 - known Datadog-only leftovers are documented with owners/follow-up decisions,
 - production rollout risks and QA steps are written down.
+
+Treat the validation as failed/blocking when preview is not healthy/synced, the service has no Dash0 traces after real traffic, service logs are absent, required workers cannot be validated without explanation, or resource attributes are missing in a way that breaks service identity or release tracking.
 
 Leave these as follow-ups unless the user explicitly includes them in scope:
 
 - Dash0 Browser RUM implementation,
 - non-standard SLO translation,
 - Datadog cleanup/removal,
-- Prometheus scrape tuning for services that do not currently use Prometheus.
+- Prometheus scrape tuning for services that do not currently use Prometheus,
+- worker telemetry that cannot be safely triggered in preview/test,
+- alert/check rule gaps when SRE-generated Dash0 checks are not yet available,
+- controlled error validation when it would create unsafe or noisy failures.

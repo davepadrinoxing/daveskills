@@ -1,0 +1,4 @@
+interface:
+  display_name: "Dependabot Remediation"
+  short_description: "Audit and remediate Dependabot alerts safely"
+  default_prompt: "Use $gh-remediate-dependabot to audit open Dependabot alerts in this repository and prepare a safe, reviewable remediation batch."

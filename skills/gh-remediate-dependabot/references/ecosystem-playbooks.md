@@ -8,7 +8,13 @@ Load only the sections that match the alert inventory. Prefer repository-documen
 2. Inspect direct constraints with `bundle info`, `bundle list`, and the lockfile dependency graph.
 3. Check the secure candidate gem's `required_ruby_version`. If it excludes the manifest's Ruby version, split the work into a runtime-upgrade remediation unit requiring user confirmation.
 4. Run Bundler from the manifest directory with that graph's exact Ruby and Bundler versions. For example, use `bundle _2.4.1_ ...` when the lockfile records Bundler 2.4.1. Do not use the root application's Ruby or Bundler for every nested lockfile.
-5. If the existing parent constraint permits the secure transitive gem, prefer a conservative lockfile update:
+5. Compare the first patched version, the latest version in the installed release line, and Bundler's reported latest version. Keep framework gems on their current compatible major/minor line unless a broader upgrade is required and approved. When only a patch-line update is intended, prefer Bundler's restrictive flags:
+
+   ```bash
+   bundle update GEM --patch --strict
+   ```
+
+6. If the existing parent constraint permits the secure transitive gem, prefer a conservative lockfile update:
 
    ```bash
    bundle update GEM --conservative
@@ -21,13 +27,26 @@ Load only the sections that match the alert inventory. Prefer repository-documen
    ```
 
    This is a resolver fallback, not validation. Still run the supported install/check and application tests separately, or report them as blocked.
-6. For an alternate manifest, set `BUNDLE_GEMFILE` explicitly or run from its project directory according to repository guidance.
-7. Keep the `Gemfile` unchanged when its existing constraints allow the secure transitive version.
-8. When the constraint blocks the secure version, update the existing direct parent gem. Do not add the transitive gem to `Gemfile` solely to force resolution.
-9. When no parent release provides a secure graph, investigate a maintained parent replacement or report the unit as blocked.
-10. Run `bundle check`, the repository security audit, focused RSpec, and relevant build/start checks.
-11. Review the `GEM`, `PLATFORMS`, `DEPENDENCIES`, `RUBY VERSION`, and `BUNDLED WITH` sections. Reject unrelated platform or conditional dependency drift; never add top-level lockfile dependencies by hand.
-12. Do not change a registry to make resolution work or forward private registry credentials into an untrusted container. Use a trusted repository-supported environment, or stop and request the required source/credential decision.
+7. For an alternate manifest, set `BUNDLE_GEMFILE` explicitly or run from its project directory according to repository guidance.
+8. Keep the `Gemfile` unchanged when its existing constraints allow the secure transitive version.
+9. When the constraint blocks the secure version, update the existing direct parent gem. Do not add the transitive gem to `Gemfile` solely to force resolution.
+10. When no parent release provides a secure graph, investigate a maintained parent replacement or report the unit as blocked.
+11. Run `bundle check`, the repository security audit, focused RSpec, and relevant build/start checks.
+12. When the resolver adds an operator-only platform, remove it through Bundler rather than editing the lockfile:
+
+    ```bash
+    bundle lock --remove-platform PLATFORM
+    ```
+
+    Retain platform entries required by CI, release builds, or other developers. Review `GEM`, `PLATFORMS`, `DEPENDENCIES`, `RUBY VERSION`, and `BUNDLED WITH`; never add or remove dependency graph entries by hand.
+13. If the bundle has no advisory scanner, run `bundler-audit` in a trusted disposable environment without adding it to the `Gemfile`. The scanner needs Git to update `ruby-advisory-db`. For a nested lockfile, pass the containing directory and lockfile name separately:
+
+    ```bash
+    bundle-audit check path/to/manifest --update --gemfile-lock Gemfile.lock
+    ```
+
+    Treat a database-download or registry failure as incomplete validation.
+14. Do not change a registry to make resolution work or forward private registry credentials into an untrusted container. Use a trusted repository-supported environment, or stop and request the required source/credential decision.
 
 ## Yarn classic
 

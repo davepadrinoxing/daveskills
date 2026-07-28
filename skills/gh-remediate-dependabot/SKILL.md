@@ -7,6 +7,8 @@ description: Audit, triage, batch, remediate, and document GitHub Dependabot ale
 
 Build a traceable remediation campaign from GitHub alerts. Keep audit mode read-only, use repository-native package managers for fixes, and preserve human control over publishing and risk acceptance.
 
+Resolve this skill's directory from the loaded `SKILL.md` and verify that both bundled scripts exist before starting. Do not assume the skill is copied into the target repository. If the user provides a central skill path that is not registered in the active session, state that limitation and use the explicitly provided copy as the workflow source; installation and session registration remain separate developer actions.
+
 ## Choose the operating mode
 
 - Use **audit mode** by default. Inspect alerts, dependency paths, existing pull requests, and repository guidance without changing files or external state.
@@ -34,8 +36,15 @@ Work in the confirmed local checkout path supplied by the developer so changes a
 2. Run `git status --short`. Preserve unrelated and pre-existing changes.
 3. Find dependency manifests, lockfiles, `.github/dependabot.yml`, runtime-version files, and package-manager configuration.
 4. Build an execution matrix for every manifest/lockfile pair: working directory, runtime version, package-manager version, registry/configuration, affected surface, and validation commands. Treat separate manifests as independent graphs even when they use the same ecosystem; never regenerate all lockfiles with the root toolchain by default.
-5. Read [references/triage-policy.md](references/triage-policy.md).
-6. Read [references/ecosystem-playbooks.md](references/ecosystem-playbooks.md) only for ecosystems present in the alert inventory.
+5. Compare every discovered dependency graph with `.github/dependabot.yml`. Run the bundled coverage checker from the repository root and report graphs without scheduled updates:
+
+   ```bash
+   python3 /absolute/path/to/gh-remediate-dependabot/scripts/dependabot_config_coverage.py
+   ```
+
+   Treat missing coverage as a maintenance gap, not permission to edit Dependabot configuration. Changing security settings still requires explicit approval.
+6. Read [references/triage-policy.md](references/triage-policy.md).
+7. Read [references/ecosystem-playbooks.md](references/ecosystem-playbooks.md) only for ecosystems present in the alert inventory.
 
 ## Inventory the alerts
 
@@ -65,6 +74,16 @@ Also inspect:
 Do not equate alert count or candidate-unit count with required version changes. One package update may close several advisories or candidate units, while the same package in multiple manifests or installed version lines may require separate changes. Confirm the installed graph before finalizing batches.
 
 Treat a published patched version as actionable only after checking its runtime and package-manager requirements against the affected manifest's execution matrix. When the first secure release requires a newer runtime or package manager, classify and split it as a runtime/toolchain upgrade requiring user confirmation; do not describe it as a lockfile-only fix.
+
+## Select secure target versions
+
+For each remediation unit, distinguish:
+
+- the first version patched against every advisory;
+- the latest compatible version in the current supported release line;
+- the package manager's unconstrained latest version.
+
+Prefer the latest maintained patch in the current compatible release line that satisfies every advisory. Do not let a generic update command silently select a new major or framework line merely because it is the newest version in the registry. Use package-manager-native patch/minor constraints when available, and split any required major upgrade into a separate unit requiring confirmation.
 
 ## Build remediation units
 
@@ -120,9 +139,10 @@ State the proposed batches before editing when the campaign is complex.
 8. If no durable supported path exists, stop preparing that unit and report it as blocked. Do not create an override, resolution, direct transitive pin, or hand-edited lockfile workaround.
 9. Use package-manager commands to update manifests and lockfiles. Never hand-edit generated lockfile dependency graphs or record a version that violates its parent constraint.
 10. Target a version that satisfies every advisory in the remediation unit. Prefer the lowest-risk maintained release line and its latest patch unless repository policy selects another supported version.
-11. Inspect the dependency graph again after each update.
-12. Review the complete diff and remove unrelated lockfile drift, including platform, workspace, and conditional-dependency entries introduced only by the operator's machine.
-13. Stop with the validated changes unstaged and uncommitted unless the user explicitly requested a commit or pull request. Report the checkout path, branch, changed files, and validation results so the developer can review the diff locally before deciding whether to publish it.
+11. Capture the installed vulnerable version and introducing parent path before the update, then inspect the installed graph again afterward. Verify every occurrence against every patched threshold; text appearing in a lockfile is not sufficient evidence.
+12. Review the complete diff and remove unrelated lockfile drift, including platform, workspace, and conditional-dependency entries introduced only by the operator's machine. Use the package manager's native cleanup command when available; never hand-edit a generated dependency graph to hide resolver drift.
+13. Classify secondary lockfile changes as either required resolver consequences or unrelated churn. Keep required child/metadata changes and explain their parent relationship; revert unrelated changes with the package manager rather than editing checksums or graph entries manually.
+14. Stop with the validated changes unstaged and uncommitted unless the user explicitly requested a commit or pull request. Report the checkout path, branch, changed files, and validation results so the developer can review the diff locally before deciding whether to publish it.
 
 Adding a new direct dependency, changing registries or credentials, migrating package managers, or performing a major upgrade requires user confirmation unless it was already explicitly requested.
 
@@ -133,10 +153,11 @@ Run validation in proportion to the affected dependency:
 1. package-manager lockfile/install consistency;
 2. installed-version or dependency-path inspection;
 3. the repository's vulnerability check when available;
-4. focused tests for affected runtime or tooling behavior;
-5. an application-level smoke, build, or test command proving the app still works with the updated graph;
-6. build, lint, or full tests when the dependency affects those surfaces;
-7. `git diff --check`, `git diff --stat`, and focused manifest/lockfile review.
+4. an independent ecosystem advisory scan when practical, run without adding the scanner to the application manifest; use a trusted disposable environment if the repository does not include a scanner;
+5. focused tests for affected runtime or tooling behavior;
+6. an application-level smoke, build, or test command proving the app still works with the updated graph;
+7. build, lint, or full tests when the dependency affects those surfaces;
+8. `git diff --check`, `git diff --stat`, and focused manifest/lockfile review.
 
 Treat network, registry, and audit failures as incomplete validation. Record the exact blocked command; do not claim the alert is fixed merely because the lockfile text changed.
 
@@ -155,15 +176,19 @@ For every prepared batch or pull request, include:
 | Change | Manifest, old version or range, and selected secure version |
 | Rationale | Why the strategy and batch boundary are safe |
 | Validation | Commands run with pass, fail, or blocked status |
+| Automation coverage | Whether Dependabot schedules cover every affected manifest directory |
 | Remaining risk | Unpatched, deferred, or intentionally separated units |
 
 Use the repository pull-request template and naming conventions. Do not leave placeholder ticket, testing, or QA sections in a published pull request.
+
+Produce a before/after table grouped by manifest and package. Include the vulnerable installed version, introducing parent, selected secure version, alert numbers, GHSA/CVE identifiers, and whether all known patched thresholds are satisfied. Describe alerts as expected to close until GitHub rescans the merged default branch.
 
 ## Guardrails
 
 - Never expose tokens, private-registry credentials, or decrypted configuration.
 - Never modify production, preview, or deployment data as part of dependency remediation.
 - Never dismiss or reopen alerts, accept risk, merge, deploy, or enable auto-merge without an explicit user request.
+- Never change `.github/dependabot.yml` merely because the coverage checker reports a gap; present the gap and request approval for the configuration change.
 - Never hide failing validation by splitting or rewriting history.
 - Never force a vulnerable transitive dependency into a nominally safe version without checking the parent contract and installed graph.
 - Never introduce overrides, resolutions, or new direct pins for transitive vulnerabilities; pursue an upstream-aligned graph or report the remediation as blocked.

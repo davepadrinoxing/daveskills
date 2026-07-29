@@ -71,6 +71,12 @@ Also inspect:
 - the dependency path from each vulnerable package to a direct dependency;
 - all vulnerable ranges and first patched versions in a remediation unit.
 
+Treat existing pull requests as overlap information only. Never remove, defer, or skip an
+alert merely because Dependabot or a developer already opened a pull request for it. Assume
+the local remediation campaign owns every open alert in scope unless the user explicitly
+narrows that scope. Do not close, supersede, or otherwise modify those pull requests without
+an explicit request.
+
 Do not equate alert count or candidate-unit count with required version changes. One package update may close several advisories or candidate units, while the same package in multiple manifests or installed version lines may require separate changes. Confirm the installed graph before finalizing batches.
 
 Treat a published patched version as actionable only after checking its runtime and package-manager requirements against the affected manifest's execution matrix. When the first secure release requires a newer runtime or package manager, classify and split it as a runtime/toolchain upgrade requiring user confirmation; do not describe it as a lockfile-only fix.
@@ -182,6 +188,18 @@ For every prepared batch or pull request, include:
 Use the repository pull-request template and naming conventions. Do not leave placeholder ticket, testing, or QA sections in a published pull request.
 
 Produce a before/after table grouped by manifest and package. Include the vulnerable installed version, introducing parent, selected secure version, alert numbers, GHSA/CVE identifiers, and whether all known patched thresholds are satisfied. Describe alerts as expected to close until GitHub rescans the merged default branch.
+
+At the end of every run, also include this compact summary before the detailed evidence:
+
+| Package | Before | After | Alerts expected to close |
+|---|---:|---:|---:|
+| `example-package` | `1.2.3` | `1.2.7` | 3 |
+
+Count unique Dependabot alert numbers expected to close from each package change; do not
+double-count advisories grouped into multiple candidate units. In audit mode, use the selected
+secure target as `After`; use `blocked` or `not selected` when no valid target exists. Keep
+scanner-only advisories in the detailed evidence and remaining-risk section unless GitHub has
+assigned them Dependabot alert numbers.
 
 ## Guardrails
 

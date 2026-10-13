@@ -79,7 +79,7 @@ an explicit request.
 
 Do not equate alert count or candidate-unit count with required version changes. One package update may close several advisories or candidate units, while the same package in multiple manifests or installed version lines may require separate changes. Confirm the installed graph before finalizing batches.
 
-Treat a published patched version as actionable only after checking its runtime and package-manager requirements against the affected manifest's execution matrix. When the first secure release requires a newer runtime or package manager, classify and split it as a runtime/toolchain upgrade requiring user confirmation; do not describe it as a lockfile-only fix.
+Treat a patched version as actionable only after verifying publication in the configured registry (including a version-specific tarball and integrity record) and checking its runtime and package-manager requirements against the affected manifest's execution matrix. Check newly introduced child dependencies recursively; a compatible parent engine does not guarantee a compatible graph. A registry query echoing an unpublished version or an advisory threshold is insufficient. When the first supported secure graph requires a newer runtime or package manager, classify and split it as a runtime/toolchain upgrade requiring user confirmation; do not describe it as a lockfile-only fix. A resolver choosing an incompatible newest child is not proof that all earlier patched graphs require that runtime; verify those alternatives first.
 
 ## Select secure target versions
 
@@ -105,10 +105,12 @@ Refine priority using exposure, reachability, exploitability, EPSS, age, public-
 For every unit, choose the first durable strategy that produces a valid dependency graph:
 
 1. update the vulnerable direct dependency;
-2. perform a targeted lockfile update when the existing parent constraint already permits the secure transitive version;
+2. perform a targeted lockfile update with a verified ecosystem-specific resolver procedure when every existing parent constraint permits the secure transitive version; for Yarn Classic, follow the selective regeneration procedure in the ecosystem playbook;
 3. update the direct parent to a supported release whose constraint permits the secure transitive version;
 4. update, replace, or remove the direct parent when the vulnerable transitive package has no patched release;
 5. report the unit as blocked when no supported secure graph exists.
+
+Distinguish a dependency-contract blocker, an unpublished patch, a runtime incompatibility, registry/authentication failure, and an unsupported or ineffective update command. A command that succeeds without changing the vulnerable installed version is a no-op, not evidence that remediation is impossible. Inspect the actual Dependabot error when available; the alert inventory API may not expose the error shown in GitHub's alert UI. Retry using the ecosystem playbook's verified resolver procedure before declaring a compatible patched transitive dependency blocked. Publishing or triggering a Dependabot pull request still requires publish-mode authorization.
 
 Never add an override, resolution, or new direct constraint to force a transitive version. Those mechanisms bypass the parent contract and create indefinite security debt. Do not invent a fixed version for an unpatched advisory or claim a blocked unit is remediated. Report the remaining exposure, available mitigation, and decision needed from the human owner.
 
@@ -143,7 +145,7 @@ State the proposed batches before editing when the campaign is complex.
 6. When the parent constraint excludes the secure transitive version, update the existing direct parent to the lowest-risk supported release line that permits a secure graph, normally selecting its latest patch. A manifest change is required in this case; adding the vulnerable transitive package as a direct dependency is not a substitute.
 7. When no patched transitive release exists, find a supported parent release that removes or replaces it. Treat a parent replacement, removal, or breaking upgrade as a separate remediation unit requiring user confirmation.
 8. If no durable supported path exists, stop preparing that unit and report it as blocked. Do not create an override, resolution, direct transitive pin, or hand-edited lockfile workaround.
-9. Use package-manager commands to update manifests and lockfiles. Never hand-edit generated lockfile dependency graphs or record a version that violates its parent constraint.
+9. Use package-manager commands to generate manifests and final lockfiles. For Yarn Classic transitive updates, the playbook permits parser-based invalidation of selected cached resolutions followed by Yarn regeneration. Never synthesize replacement versions, checksums, or dependency ranges, hand-edit a generated graph, or record a version that violates its parent constraint.
 10. Target a version that satisfies every advisory in the remediation unit. Prefer the lowest-risk maintained release line and its latest patch unless repository policy selects another supported version.
 11. Capture the installed vulnerable version and introducing parent path before the update, then inspect the installed graph again afterward. Verify every occurrence against every patched threshold; text appearing in a lockfile is not sufficient evidence.
 12. Review the complete diff and remove unrelated lockfile drift, including platform, workspace, and conditional-dependency entries introduced only by the operator's machine. Use the package manager's native cleanup command when available; never hand-edit a generated dependency graph to hide resolver drift.

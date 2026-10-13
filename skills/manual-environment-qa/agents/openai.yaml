@@ -1,0 +1,4 @@
+interface:
+  display_name: "Manual Environment QA"
+  short_description: "Prepare and execute safe XTM environment QA"
+  default_prompt: "Use $manual-environment-qa to prepare safe, environment-aware manual QA for this XTM change and execute scenarios only after authorization."

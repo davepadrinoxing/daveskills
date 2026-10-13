@@ -56,12 +56,14 @@ Separate:
 
 Use the dependency contract to select the remediation:
 
-1. If the existing parent range permits a secure child, update only the lockfile with the repository's package manager.
+1. If every existing parent range permits a secure child, update only the lockfile with the repository's package manager and a verified ecosystem-specific resolver procedure. Follow the Yarn Classic selective regeneration playbook when its ordinary upgrade command leaves an indirect dependency unchanged.
 2. If the parent range excludes the secure child, update the existing direct parent to a supported release that permits it.
 3. If the child has no patched release, update, replace, or remove the direct parent so the vulnerable package leaves the graph.
 4. If no supported secure graph exists, report the remediation as blocked and document mitigations and ownership.
 
 Do not use overrides, resolutions, newly direct transitive constraints, or hand-edited lockfile entries. These approaches bypass the introducing parent's declared compatibility and turn an alert into locally maintained security debt rather than a long-term fix.
+
+Selective parser-based invalidation of cached resolutions followed by package-manager regeneration is distinct from fabricating a replacement graph. Keep the existing parent contract, verify the resolver output, and preserve unrelated entries. A no-op command or missing updater capability is a tooling limitation; declare a dependency-contract blocker only after showing that no supported parent graph permits the secure version. Report unpublished patches, runtime requirements, and registry/authentication failures separately.
 
 ## Human decisions
 

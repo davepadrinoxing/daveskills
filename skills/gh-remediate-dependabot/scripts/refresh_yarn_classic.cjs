@@ -17,10 +17,11 @@ function splitSelector(selector) {
   return { name: match[1], range: match[2] };
 }
 function options(args) {
-  const result = { targets: [], apply: false, check: false };
+  const result = { targets: [], apply: false, check: false, includeDirect: false };
   for (let i = 0; i < args.length; i++) {
     const key = args[i];
     if (key === '--apply' || key === '--check') result[key.slice(2)] = true;
+    else if (key === '--include-direct') result.includeDirect = true;
     else if (['--repo', '--tools', '--yarn-cli', '--registry', '--target'].includes(key)) {
       const value = args[++i];
       if (!value || value.startsWith('--')) fail(`Missing value for ${key}`);
@@ -29,7 +30,7 @@ function options(args) {
     } else fail(`Unknown argument: ${key}`);
   }
   if (!result.repo || !result.tools || !result.targets.length || (result.apply && result.check)) {
-    fail('Usage: --repo PATH --tools TOOLS_DIRECTORY --target PACKAGE@VERSION [--target ...] [--apply --yarn-cli PATH --registry URL | --check]. Default: read-only plan.');
+    fail('Usage: --repo PATH --tools TOOLS_DIRECTORY --target PACKAGE@VERSION [--target ...] [--include-direct] [--apply --yarn-cli PATH --registry URL | --check]. Default: read-only plan.');
   }
   return result;
 }
@@ -54,16 +55,28 @@ function main(args) {
   }
   const before = parse(originalLock);
   const targets = new Map();
+  let hasDirectTarget = false;
   for (const value of opts.targets) {
     const { name, range: version } = splitSelector(value);
     if (!semver.valid(version) || semver.prerelease(version)) fail(`Expected a stable exact version: ${value}`);
     const values = targets.get(name) || [];
     if (!values.includes(version)) values.push(version);
     targets.set(name, values);
-    for (const section of ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']) {
-      if (Object.hasOwn(manifest[section] || {}, name)) fail(`Direct dependency ${name}: use the normal Yarn upgrade workflow.`);
+    const directRanges = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies']
+      .map(section => manifest[section] || {})
+      .filter(section => Object.hasOwn(section, name))
+      .map(section => section[name]);
+    if (directRanges.length) {
+      hasDirectTarget = true;
+      if (!opts.includeDirect) fail(`Direct dependency ${name}: use the normal Yarn upgrade workflow, or pass --include-direct to refresh every direct and transitive lockfile occurrence after reviewing the direct range.`);
+      for (const range of directRanges) {
+        if (!semver.validRange(range) || !values.some(version => semver.satisfies(version, range))) {
+          fail(`No reviewed target for ${name} satisfies direct manifest range ${range}.`);
+        }
+      }
     }
   }
+  if (opts.includeDirect && !hasDirectTarget) fail('--include-direct requires at least one selected package that is a direct manifest dependency.');
   // Aliased occurrences must not silently escape the all-occurrences check.
   for (const selector of Object.keys(before)) {
     const { range } = splitSelector(selector);

@@ -31,9 +31,11 @@ function fixture(t, { manifest = {}, extra = {}, mode = 'valid' } = {}) {
     if (process.argv.includes('--version')) { console.log('1.22.22'); process.exit(0); }
     const graph = lockfile.parse(fs.readFileSync('yarn.lock', 'utf8')).object;
     if (graph['child@^1.0.0']) throw new Error('Selected cache was not invalidated');
+    if (${JSON.stringify(mode === 'direct')} && graph['child@^1.0.1'] && graph['child@^1.0.1'].version !== '1.0.1') throw new Error('Direct selected cache is not at the reviewed target');
     if (!graph['childish@^1.0.0']) throw new Error('Wrong package cache invalidated');
     if (${JSON.stringify(mode)} === 'failure') process.exit(2);
     graph['child@^1.0.0'] = { version: ${JSON.stringify(mode === 'unexpected' ? '1.0.9' : '1.0.1')}, integrity: 'generated', dependencies: { leaf: '^1.0.0' } };
+    if (${JSON.stringify(mode === 'direct')}) graph['child@^1.0.1'] = { version: '1.0.1', integrity: 'generated', dependencies: { leaf: '^1.0.0' } };
     graph['leaf@^1.0.0'] = { version: '1.0.0', integrity: 'generated' };
     if (!graph['@scope/child@^2.0.0']) graph['@scope/child@^2.0.0'] = { version: '2.0.1', integrity: 'generated' };
     if (${JSON.stringify(mode)} === 'churn') graph['parent@1.0.0'].version = '1.0.2';
@@ -79,6 +81,38 @@ test('rejects a target excluded by an exact parent range before writes', t => {
   const r = f.run('--apply', '--yarn-cli', f.yarn);
   assert.equal(r.status, 1); assert.match(r.stderr, /allowed by child@1.0.0/);
   assert.equal(fs.readFileSync(path.join(f.repo, 'yarn.lock'), 'utf8'), f.original);
+});
+test('refreshes all direct and transitive selectors only with explicit opt-in and preserves the manifest', t => {
+  const f = fixture(t, {
+    manifest: { dependencies: { child: '^1.0.1' } },
+    extra: { 'child@^1.0.1': { version: '1.0.1', integrity: 'already-updated' } },
+    mode: 'direct',
+  });
+  const denied = f.run('--apply', '--yarn-cli', f.yarn);
+  assert.equal(denied.status, 1);
+  assert.match(denied.stderr, /Direct dependency child/);
+  assert.equal(fs.readFileSync(path.join(f.repo, 'yarn.lock'), 'utf8'), f.original);
+
+  const updated = f.run('--include-direct', '--apply', '--yarn-cli', f.yarn);
+  assert.equal(updated.status, 0, updated.stderr);
+  const graph = lockfile.parse(fs.readFileSync(path.join(f.repo, 'yarn.lock'), 'utf8')).object;
+  assert.equal(graph['child@^1.0.0'].version, '1.0.1');
+  assert.equal(graph['child@^1.0.1'].version, '1.0.1');
+  assert.equal(fs.readFileSync(path.join(f.repo, 'package.json'), 'utf8'), f.originalManifest);
+  assert.equal(f.run('--include-direct', '--check').status, 0);
+});
+test('include-direct rejects targets outside the direct manifest range before writes', t => {
+  const f = fixture(t, { manifest: { dependencies: { child: '^2.0.0' } } });
+  const r = f.run('--include-direct', '--apply', '--yarn-cli', f.yarn);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /satisfies direct manifest range/);
+  assert.equal(fs.readFileSync(path.join(f.repo, 'yarn.lock'), 'utf8'), f.original);
+});
+test('include-direct is rejected when no selected package is direct', t => {
+  const f = fixture(t);
+  const r = f.run('--include-direct');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /requires at least one selected package/);
 });
 test('requires a reviewed target for every installed major line', t => {
   const f = fixture(t, { extra: { 'child@^2.0.0': { version: '2.0.0' } } });

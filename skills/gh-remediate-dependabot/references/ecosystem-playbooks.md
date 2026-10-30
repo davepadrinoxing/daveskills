@@ -59,11 +59,12 @@ Load only the sections that match the alert inventory. Prefer repository-documen
    ```
 
 3. If every parent range permits a published secure transitive version, use the selective regeneration procedure below without changing `package.json`. Do not assume `yarn upgrade --pattern PACKAGE` refreshes an indirect dependency: verify the resulting graph; a successful no-op proves nothing about fixability.
-4. If the range blocks it, update the existing direct parent to a supported release that permits the secure child.
-5. If no secure child exists, update, replace, or remove the parent so the vulnerable package leaves the graph.
-6. Never use `resolutions` or add the transitive package directly as a remediation.
-7. Run `yarn install --frozen-lockfile` with normal lifecycle scripts, the repository audit command, focused tests, and build/lint checks appropriate to the package. Confirm that the frozen install leaves the lockfile unchanged.
-8. Review `package.json` and `yarn.lock` together and reject unrelated lockfile churn.
+4. When a package is both direct and transitive, first use Yarn's normal upgrade workflow for the direct dependency. If other vulnerable lockfile occurrences remain, the helper can refresh all occurrences with `--include-direct`; the selected target must satisfy the direct manifest range and every lockfile parent range, and the manifest must remain byte-identical.
+5. If the range blocks it, update the existing direct parent to a supported release that permits the secure child.
+6. If no secure child exists, update, replace, or remove the parent so the vulnerable package leaves the graph.
+7. Never use `resolutions` or add the transitive package directly as a remediation.
+8. Run `yarn install --frozen-lockfile` with normal lifecycle scripts, the repository audit command, focused tests, and build/lint checks appropriate to the package. Confirm that the frozen install leaves the lockfile unchanged.
+9. Review `package.json` and `yarn.lock` together and reject unrelated lockfile churn.
 
 When a parent requests an exact vulnerable transitive version, a lockfile-only replacement with a different version is not a valid Yarn graph. Upgrade the existing direct parent or report the blocker; never falsify the lockfile entry.
 
@@ -98,9 +99,16 @@ node /absolute/path/to/skill/scripts/refresh_yarn_classic.cjs \
   --repo /absolute/path/to/repository --tools "$REMEDIATION_TOOLS" \
   --target 'PACKAGE@REVIEWED_VERSION' --apply \
   --yarn-cli /absolute/path/to/yarn/bin/yarn.js --registry "$APPROVED_REGISTRY"
+
+# If PACKAGE is also direct, use this only after the normal direct-upgrade workflow
+# and after confirming the reviewed target satisfies the unchanged manifest range.
+node /absolute/path/to/skill/scripts/refresh_yarn_classic.cjs \
+  --repo /absolute/path/to/repository --tools "$REMEDIATION_TOOLS" \
+  --target 'PACKAGE@REVIEWED_VERSION' --include-direct --apply \
+  --yarn-cli /absolute/path/to/yarn/bin/yarn.js --registry "$APPROVED_REGISTRY"
 ```
 
-Repeat `--target` to batch packages or cover multiple installed release lines. The helper supports a single manifest graph, rejects direct dependencies, workspaces, selected packages hidden behind npm aliases, unsupported sources, incompatible targets, and existing resolutions affecting a selected package. It also rejects wildcard package-name resolutions whose effect needs a richer matcher. For workspaces, aliases, or unusual sources, use a verified aware updater or investigate parent updates; a helper capability limit is not a dependency-contract blocker.
+Repeat `--target` to batch packages or cover multiple installed release lines. By default, the helper rejects direct dependencies so they are updated through Yarn's normal workflow. When a package is both direct and transitive, use `--include-direct` only after reviewing the manifest and dependency paths; this opts into refreshing every selector for that package, and the helper checks that reviewed targets satisfy the direct manifest ranges as well as all lockfile ranges. It never changes the manifest. The helper supports a single manifest graph, rejects workspaces, selected packages hidden behind npm aliases, unsupported sources, incompatible targets, and existing resolutions affecting a selected package. It also rejects wildcard package-name resolutions whose effect needs a richer matcher. For workspaces, aliases, or unusual sources, use a verified aware updater or investigate parent updates; a helper capability limit is not a dependency-contract blocker.
 
 The regeneration install suppresses lifecycle scripts to keep resolution separate from application validation; it does not suppress engine checks. Afterward, run a normal frozen install, inspect all installed occurrences with `yarn why`/`yarn list`, verify the advisory ranges, and run application checks. New child selectors are allowed only when reachable from the updated packages; review their versions, engines, and advisories too. Existing unrelated entries must remain semantically unchanged. If the helper rejects a required shared-child change, report and investigate that resolver consequence rather than relaxing the checks blindly or manually repairing the lockfile.
 

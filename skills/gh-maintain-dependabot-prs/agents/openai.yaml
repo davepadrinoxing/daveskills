@@ -1,0 +1,4 @@
+interface:
+  display_name: "Maintain Dependabot PRs"
+  short_description: "Recreate dependency PRs and repair failing updates"
+  default_prompt: "Use $gh-maintain-dependabot-prs to recreate eligible dependency PRs, follow their results, and prepare fixes locally for remaining failures."
